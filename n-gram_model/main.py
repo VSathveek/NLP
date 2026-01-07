@@ -1,8 +1,9 @@
 from collections import defaultdict
 import requests
 import re
+import time
 
-N = 5
+N = 5  
 
 ngram_counts = defaultdict(int)
 context_counts = defaultdict(int)
@@ -47,37 +48,80 @@ def clean_text(text):
 
 
 def prepare_sentences(text):
-    sentences = re.split(r'[.!?]', text)
-    return [s.strip() for s in sentences if s.strip()]
+    sents = re.split(r'[.!?]', text)
+    return [s.strip() for s in sents if s.strip()]
 
 
-def generate(text, limit=25):
-    words = text.lower().split()
-    output = words[:]
-    while len(output) < limit + len(words):
-        context = tuple(output[-(N - 1):])
-        word = compute_prob(context)
-        if not word:
-            break
-        output.append(word)
-    return " ".join(output)
+def fetch_book(book_id):
+    urls = [
+        f"https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt",
+        f"https://www.gutenberg.org/files/{book_id}/{book_id}.txt",
+    ]
+    for url in urls:
+        try:
+            r = requests.get(url, timeout=15)
+            if r.status_code == 200:
+                return r.text
+        except:
+            time.sleep(1)
+    return ""
 
 
-url = "https://www.gutenberg.org/files/1342/1342-0.txt"
-raw = requests.get(url).text
-raw = raw.split("*** START OF")[1].split("*** END OF")[0]
 
-clean = clean_text(raw)
-sentences = prepare_sentences(clean)
-vocabulary(sentences)
-
-
-samples = [
-    "The day was very",
-    "She could not help",
-    "It was impossible to"
+book_ids = [
+    "1342", 
+    "84",   
+    "1661", 
+    "11",    
+    "2701",  
 ]
 
-for s in samples:
-    print("\n\n\n")
-    print(generate(s))
+all_sentences = []
+
+for bid in book_ids:
+    raw = fetch_book(bid)
+    if not raw:
+        print(f"Failed {bid}")
+        continue
+    if "*** START OF" in raw and "*** END OF" in raw:
+        raw = raw.split("*** START OF")[1].split("*** END OF")[0]
+    clean = clean_text(raw)
+    sents = prepare_sentences(clean)
+    all_sentences.extend(sents)
+    print(f"Loaded book {bid}, sentences: {len(sents)}")
+
+
+vocabulary(all_sentences)
+print(f"Total vocab: {len(vocab)}")
+
+
+seeds = [
+    "The day was very",
+    "She could not help",
+    "It was impossible to",
+    "In the beginning",
+    "He had never"
+]
+
+results = []
+for s in seeds:
+    words = s.lower().split()
+    generated = words[:]
+    
+    for _ in range(1000):
+        if len(generated) < N - 1:
+            break
+        context = tuple(generated[-(N - 1):])
+        nxt = compute_prob(context)
+        if not nxt:
+            break
+        generated.append(nxt)
+    out = " ".join(generated)
+    results.append(out)
+
+
+with open("output.txt", "w", encoding="utf-8") as f:
+    for line in results:
+        f.write(line + "\n\n")
+
+print("wrote to output")
